@@ -783,22 +783,6 @@ struct bfq_data {
 	 */
 	unsigned int word_depths[2][2];
 	unsigned int full_depth_shift;
-
-#ifdef CONFIG_BFQ_GROUP_IOSCHED
-	/* the size of last dispatched request */
-	unsigned int dispatch_size;
-	/*
-	 * If bfq keep dispatching requests with same size, this store the
-	 * count of requests. We use unsigned long here, so we don't care
-	 * about overflow.
-	 */
-	unsigned long dispatch_count;
-	/*
-	 * If bfq keep dispatching requests with same size, this store the
-	 * time when the first request was dispatched.
-	 */
-	unsigned long dispatch_time;
-#endif
 };
 
 enum bfqq_state_flags {
