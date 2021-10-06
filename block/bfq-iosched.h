@@ -780,6 +780,7 @@ struct bfq_data {
 	 * function)
 	 */
 	unsigned int word_depths[2][2];
+	unsigned int full_depth_shift;
 
 #ifdef CONFIG_BFQ_GROUP_IOSCHED
 	/* the size of last dispatched request */
