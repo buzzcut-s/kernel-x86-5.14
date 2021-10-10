@@ -890,8 +890,11 @@ __SC_COMP(__NR_futex_waitv, sys_futex_waitv, compat_sys_futex_waitv)
 #define __NR_futex_requeue 451
 __SC_COMP(__NR_futex_requeue, sys_futex_requeue, compat_sys_futex_requeue)
 
+#define __NR_pmadv_ksm 452
+__SYSCALL(__NR_pmadv_ksm, sys_pmadv_ksm)
+
 #undef __NR_syscalls
-#define __NR_syscalls 452
+#define __NR_syscalls 453
 
 /*
  * 32 bit systems traditionally used different

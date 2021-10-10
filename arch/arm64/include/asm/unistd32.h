@@ -909,6 +909,8 @@ __SYSCALL(__NR_futex_wake, sys_futex_wake)
 __SYSCALL(__NR_futex_wake, sys_futex_wake)
 #define __NR_futex_requeue 451
 __SYSCALL(__NR_futex_wake, sys_futex_wake)
+#define __NR_pmadv_ksm 452
+__SYSCALL(__NR_pmadv_ksm, sys_pmadv_ksm)
 
 /*
  * Please add new compat syscalls above this comment and update
