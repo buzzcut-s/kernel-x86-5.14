@@ -901,7 +901,15 @@ __SYSCALL(__NR_landlock_create_ruleset, sys_landlock_create_ruleset)
 __SYSCALL(__NR_landlock_add_rule, sys_landlock_add_rule)
 #define __NR_landlock_restrict_self 446
 __SYSCALL(__NR_landlock_restrict_self, sys_landlock_restrict_self)
-#define __NR_pmadv_ksm 447
+#define __NR_futex_wait 448
+__SYSCALL(__NR_futex_wait, sys_futex_wait)
+#define __NR_futex_wake 449
+__SYSCALL(__NR_futex_wake, sys_futex_wake)
+#define __NR_futex_waitv 450
+__SYSCALL(__NR_futex_wake, sys_futex_wake)
+#define __NR_futex_requeue 451
+__SYSCALL(__NR_futex_wake, sys_futex_wake)
+#define __NR_pmadv_ksm 452
 __SYSCALL(__NR_pmadv_ksm, sys_pmadv_ksm)
 
 /*
