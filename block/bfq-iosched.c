@@ -269,16 +269,6 @@ static struct kmem_cache *bfq_pool;
 #define BFQ_RATE_SHIFT		16
 
 /*
- * 1) bfq keep dispatching requests with same size for at least one second.
- * 2) bfq dispatch at lease 1024 requests
- *
- * We think bfq are dispatching request with same size if the above two
- * conditions hold true.
- */
-#define VARIED_REQUEST_SIZE(bfqd) ((bfqd)->dispatch_count < 1024 ||\
-		time_before(jiffies, (bfqd)->dispatch_time + HZ))
-
-/*
  * When configured for computing the duration of the weight-raising
  * for interactive queues automatically (see the comments at the
  * beginning of this file), BFQ does it using the following formula:
@@ -827,9 +817,7 @@ bfq_pos_tree_add_move(struct bfq_data *bfqd, struct bfq_queue *bfqq)
  * much easier to maintain the needed state:
  * 1) all active queues have the same weight,
  * 2) all active queues belong to the same I/O-priority class,
- * 3) there are one active group at most(incluing root_group).
- * If the last condition is false, there is no need to guarantee the,
- * same share of the throughput of queues in the same group.
+ * 3) there are one active group at most.
  * In particular, the last condition is always true if hierarchical
  * support or the cgroups interface are not enabled, thus no state
  * needs to be maintained in this case.
@@ -837,27 +825,7 @@ bfq_pos_tree_add_move(struct bfq_data *bfqd, struct bfq_queue *bfqq)
 static bool bfq_asymmetric_scenario(struct bfq_data *bfqd,
 				   struct bfq_queue *bfqq)
 {
-	bool smallest_weight;
-	bool varied_queue_weights;
-	bool multiple_classes_busy;
-
-#ifdef CONFIG_BFQ_GROUP_IOSCHED
-	if (bfqd->num_groups_with_pending_reqs > 1 &&
-	    VARIED_REQUEST_SIZE(bfqd))
-		return true;
-
-	if (bfqd->num_groups_with_pending_reqs &&
-	    bfqd->num_queues_with_pending_reqs_in_root)
-		return true;
-
-	/*
-	 * Reach here means only one group(incluing root group) has pending
-	 * requests, thus it's safe to return.
-	 */
-	return false;
-#endif
-
-	smallest_weight = bfqq &&
+	bool smallest_weight = bfqq &&
 		bfqq->weight_counter &&
 		bfqq->weight_counter ==
 		container_of(
@@ -869,17 +837,21 @@ static bool bfq_asymmetric_scenario(struct bfq_data *bfqd,
 	 * For queue weights to differ, queue_weights_tree must contain
 	 * at least two nodes.
 	 */
-	varied_queue_weights = !smallest_weight &&
+	bool varied_queue_weights = !smallest_weight &&
 		!RB_EMPTY_ROOT(&bfqd->queue_weights_tree.rb_root) &&
 		(bfqd->queue_weights_tree.rb_root.rb_node->rb_left ||
 		 bfqd->queue_weights_tree.rb_root.rb_node->rb_right);
 
-	multiple_classes_busy =
+	bool multiple_classes_busy =
 		(bfqd->busy_queues[0] && bfqd->busy_queues[1]) ||
 		(bfqd->busy_queues[0] && bfqd->busy_queues[2]) ||
 		(bfqd->busy_queues[1] && bfqd->busy_queues[2]);
 
-	return varied_queue_weights || multiple_classes_busy;
+	return varied_queue_weights || multiple_classes_busy
+#ifdef CONFIG_BFQ_GROUP_IOSCHED
+	       || bfqd->num_groups_with_pending_reqs > 1
+#endif
+		;
 }
 
 /*
@@ -988,6 +960,16 @@ reset_entity_pointer:
 	bfq_put_queue(bfqq);
 }
 
+static inline void
+bfq_clear_group_with_pending_reqs(struct bfq_data *bfqd,
+				  struct bfq_entity *entity)
+{
+	if (entity->in_groups_with_pending_reqs) {
+		entity->in_groups_with_pending_reqs = false;
+		bfqd->num_groups_with_pending_reqs--;
+	}
+}
+
 /*
  * Invoke __bfq_weights_tree_remove on bfqq and decrement the number
  * of active groups for each queue's inactive parent entity.
@@ -995,16 +977,26 @@ reset_entity_pointer:
 void bfq_weights_tree_remove(struct bfq_data *bfqd,
 			     struct bfq_queue *bfqq)
 {
-	struct bfq_entity *entity = &bfqq->entity;
+	struct bfq_entity *entity = bfqq->entity.parent;
+	struct bfq_sched_data *sd;
 
-	if (entity->in_groups_with_pending_reqs) {
-		entity->in_groups_with_pending_reqs = false;
-		bfqd->num_queues_with_pending_reqs_in_root--;
+	/*
+	 * If the bfq queue is in root group, the decrement of
+	 * num_groups_with_pending_reqs is performed immediately upon the
+	 * deactivation of entity.
+	 */
+	if (!entity) {
+		entity = &bfqd->root_group->entity;
+		sd = entity->my_sched_data;
+
+		if (!sd->in_service_entity)
+			bfq_clear_group_with_pending_reqs(bfqd, entity);
+
+		return;
 	}
 
-	entity = entity->parent;
 	for_each_entity(entity) {
-		struct bfq_sched_data *sd = entity->my_sched_data;
+		sd = entity->my_sched_data;
 
 		if (sd->next_in_service || sd->in_service_entity) {
 			/*
@@ -1022,7 +1014,8 @@ void bfq_weights_tree_remove(struct bfq_data *bfqd,
 		}
 
 		/*
-		 * The decrement of num_groups_with_pending_reqs is
+		 * If the bfq queue is not in root group,
+		 * the decrement of num_groups_with_pending_reqs is
 		 * not performed immediately upon the deactivation of
 		 * entity, but it is delayed to when it also happens
 		 * that the first leaf descendant bfqq of entity gets
@@ -1031,10 +1024,7 @@ void bfq_weights_tree_remove(struct bfq_data *bfqd,
 		 * needed. See the comments on
 		 * num_groups_with_pending_reqs for details.
 		 */
-		if (entity->in_groups_with_pending_reqs) {
-			entity->in_groups_with_pending_reqs = false;
-			bfqd->num_groups_with_pending_reqs--;
-		}
+		bfq_clear_group_with_pending_reqs(bfqd, entity);
 	}
 
 	/*
@@ -5075,20 +5065,6 @@ static bool bfq_has_work(struct blk_mq_hw_ctx *hctx)
 		bfq_tot_busy_queues(bfqd) > 0;
 }
 
-static void bfq_update_dispatch_size_info(struct bfq_data *bfqd,
-					  unsigned int size)
-{
-#ifdef CONFIG_BFQ_GROUP_IOSCHED
-	if (bfqd->dispatch_size == size) {
-		bfqd->dispatch_count++;
-	} else {
-		bfqd->dispatch_size = size;
-		bfqd->dispatch_count = 1;
-		bfqd->dispatch_time = jiffies;
-	}
-#endif
-}
-
 static struct request *__bfq_dispatch_request(struct blk_mq_hw_ctx *hctx)
 {
 	struct bfq_data *bfqd = hctx->queue->elevator->elevator_data;
@@ -5183,7 +5159,6 @@ inc_in_driver_start_rq:
 		bfqd->rq_in_driver++;
 start_rq:
 		rq->rq_flags |= RQF_STARTED;
-		bfq_update_dispatch_size_info(bfqd, blk_rq_bytes(rq));
 	}
 exit:
 	return rq;

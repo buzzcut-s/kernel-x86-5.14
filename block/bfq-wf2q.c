@@ -955,28 +955,41 @@ static void bfq_update_fin_time_enqueue(struct bfq_entity *entity,
 
 	bfq_active_insert(st, entity);
 }
+#ifdef CONFIG_BFQ_GROUP_IOSCHED
+static inline void
+bfq_set_group_with_pending_reqs(struct bfq_data *bfqd,
+				struct bfq_entity *entity)
+{
+	if (!entity->in_groups_with_pending_reqs) {
+		entity->in_groups_with_pending_reqs = true;
+		bfqd->num_groups_with_pending_reqs++;
+	}
+}
 
 static void bfq_update_groups_with_pending_reqs(struct bfq_entity *entity)
 {
-#ifdef CONFIG_BFQ_GROUP_IOSCHED
 	struct bfq_queue *bfqq = bfq_entity_to_bfqq(entity);
 
 	if (bfqq) {
-		if (!entity->parent && !entity->in_groups_with_pending_reqs) {
-			entity->in_groups_with_pending_reqs = true;
-			bfqq->bfqd->num_queues_with_pending_reqs_in_root++;
-		}
+		/*
+		 * If the entity represents bfq_queue, and the queue belongs to
+		 * root cgroup.
+		 */
+		if (!entity->parent)
+			bfq_set_group_with_pending_reqs(bfqq->bfqd,
+				&bfqq->bfqd->root_group->entity);
 	} else {
-		if (!entity->in_groups_with_pending_reqs) {
-			struct bfq_group *bfqg = bfq_entity_to_bfqg(entity);
-			struct bfq_data *bfqd = bfqg->bfqd;
+		/* If the entity represents bfq_group. */
+		struct bfq_group *bfqg = bfq_entity_to_bfqg(entity);
+		struct bfq_data *bfqd = bfqg->bfqd;
 
-			entity->in_groups_with_pending_reqs = true;
-			bfqd->num_groups_with_pending_reqs++;
-		}
+		bfq_set_group_with_pending_reqs(bfqd, entity);
 	}
-#endif
 }
+#else
+#define bfq_update_groups_with_pending_reqs(struct bfq_entity *entity) \
+	do {} while (0)
+#endif
 
 /**
  * __bfq_activate_entity - handle activation of entity.

@@ -200,12 +200,7 @@ struct bfq_entity {
 	/* flag, set to request a weight, ioprio or ioprio_class change  */
 	int prio_changed;
 
-	/*
-	 * If entity represents bfq_group, this flag will set if the group is
-	 * not root_group and have any pending requests; If entity represents
-	 * bfq_queue, this flag will set if the queue is in root_group and have
-	 * any pending requests.
-	 */
+	/* flag, set if the entity is counted in groups_with_pending_reqs */
 	bool in_groups_with_pending_reqs;
 
 	/* last child queue of entity created (for non-leaf entities) */
@@ -549,11 +544,7 @@ struct bfq_data {
 	 * with no request waiting for completion.
 	 */
 	unsigned int num_groups_with_pending_reqs;
-	/*
-	 * number of queues that are in root_group with at least one request
-	 * waiting for completion.
-	 */
-	unsigned int num_queues_with_pending_reqs_in_root;
+
 	/*
 	 * Per-class (RT, BE, IDLE) number of bfq_queues containing
 	 * requests (including the queue in service, even if it is
@@ -783,22 +774,6 @@ struct bfq_data {
 	 */
 	unsigned int word_depths[2][2];
 	unsigned int full_depth_shift;
-
-#ifdef CONFIG_BFQ_GROUP_IOSCHED
-	/* the size of last dispatched request */
-	unsigned int dispatch_size;
-	/*
-	 * If bfq keep dispatching requests with same size, this store the
-	 * count of requests. We use unsigned long here, so we don't care
-	 * about overflow.
-	 */
-	unsigned long dispatch_count;
-	/*
-	 * If bfq keep dispatching requests with same size, this store the
-	 * time when the first request was dispatched.
-	 */
-	unsigned long dispatch_time;
-#endif
 };
 
 enum bfqq_state_flags {
